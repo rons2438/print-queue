@@ -166,11 +166,17 @@ h2 {
 .avatar {
   width: 92px;
   height: 92px;
+  min-width: 92px;
+  min-height: 92px;
+  max-width: 92px;
+  max-height: 92px;
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   background: var(--tile, #444);
   display: grid;
   place-items: center;
   position: relative;
+  flex: 0 0 auto;
   box-shadow: var(--shadow);
   transition: transform 0.15s ease;
 }
@@ -192,11 +198,28 @@ h2 {
   filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.15));
 }
 
-.avatar img {
+/* Clip lives inside the circle so a tall or transparent photo cannot
+   stretch the avatar or cover the buttons. The count badge stays outside it. */
+.avatar-clip {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.avatar-clip img,
+.mini img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
+  max-width: none;
+  max-height: none;
   object-fit: cover;
-  border-radius: 50%;
+  object-position: center center;
+  border-radius: 0;
 }
 
 .avatar.has-photo {
@@ -204,8 +227,13 @@ h2 {
   box-shadow: 0 0 0 3px var(--tile, #ff7a2f), var(--shadow);
 }
 
+.avatar.has-photo .avatar-clip {
+  background: #1a1a1a;
+}
+
 .count {
   position: absolute;
+  z-index: 1;
   right: -4px;
   bottom: -2px;
   min-width: 26px;
@@ -255,7 +283,14 @@ h2 {
 
 .who h1 { font-size: clamp(32px, 7vw, 44px); margin: 0; }
 
-.who .avatar { width: 120px; height: 120px; }
+.who .avatar {
+  width: 120px;
+  height: 120px;
+  min-width: 120px;
+  min-height: 120px;
+  max-width: 120px;
+  max-height: 120px;
+}
 
 .who .avatar .emoji { font-size: 56px; }
 
@@ -425,8 +460,11 @@ input::placeholder, textarea::placeholder {
 }
 
 .mini {
+  position: relative;
   width: 22px;
   height: 22px;
+  min-width: 22px;
+  min-height: 22px;
   border-radius: 50%;
   display: inline-grid;
   place-items: center;
@@ -435,7 +473,6 @@ input::placeholder, textarea::placeholder {
   font-size: 13px;
 }
 
-.mini img { width: 100%; height: 100%; object-fit: cover; }
 .mini .emoji { font-size: 13px; filter: none; }
 
 .admin-row, .confirm { margin-top: 12px; justify-content: space-between; }

@@ -291,10 +291,10 @@ function missingHtml() {
 }
 
 function avatarInner(profile, photoUrl, className) {
-  const photo = photoUrl
+  const face = photoUrl
     ? `<img src="${escapeHtml(photoUrl)}" alt="" />`
     : `<span class="${className || "emoji"}" aria-hidden="true">${profile ? profile.emoji : "🙂"}</span>`;
-  return photo;
+  return `<span class="avatar-clip">${face}</span>`;
 }
 
 function gridHtml() {
