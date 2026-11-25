@@ -1,8 +1,8 @@
 :root {
   color-scheme: dark;
-  --bg: #0e0e10;
-  --bg-raise: #1b1b1f;
-  --line: #34343a;
+  --bg: #2a282b;
+  --bg-raise: #353338;
+  --line: #4e4b50;
   --text: #f6f3ec;
   --muted: #b7b1a6;
   --faint: #8f897f;
@@ -21,7 +21,7 @@ html, body { margin: 0; }
 body {
   min-height: 100dvh;
   background:
-    radial-gradient(900px 420px at 50% -120px, #3a2a1c 0%, transparent 60%),
+    radial-gradient(900px 420px at 50% -120px, #4a3828 0%, transparent 60%),
     var(--bg);
   color: var(--text);
   padding:
@@ -45,30 +45,31 @@ img { max-width: 100%; }
 }
 
 .brand {
-  display: block;
+  display: flex;
+  justify-content: center;
   text-decoration: none;
-  margin: 4px auto 8px;
-  width: fit-content;
+  margin: 2px auto 6px;
+  width: 100%;
 }
 
 .brand img {
   display: block;
-  height: min(34vh, 230px);
+  height: min(30vh, 220px);
   width: auto;
   margin: 0 auto;
-  filter: drop-shadow(0 16px 24px rgba(0, 0, 0, 0.45));
+  filter:
+    drop-shadow(0 10px 16px rgba(0, 0, 0, 0.38))
+    drop-shadow(0 2px 4px rgba(0, 0, 0, 0.28));
 }
 
 .brand.compact {
-  display: flex;
   align-items: center;
   gap: 12px;
-  width: min(100%, 28rem);
-  text-align: left;
 }
 
 .brand.compact img {
-  height: 72px;
+  height: 68px;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35));
 }
 
 .brand-name {
@@ -313,7 +314,7 @@ input, textarea, select {
   font: inherit;
   font-size: 16px;
   color: var(--text);
-  background: #121214;
+  background: #242226;
   border: 1px solid #4a4a52;
   border-radius: 12px;
   padding: 12px 14px;

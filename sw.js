@@ -1,4 +1,4 @@
-const CACHE = "print-queue-v3";
+const CACHE = "print-queue-v4";
 const ASSETS = [
   "./",
   "./index.html",
@@ -7,7 +7,7 @@ const ASSETS = [
   "./profiles.js",
   "./firebase-config.js",
   "./manifest.webmanifest",
-  "./images/p1s-ams2-pro.jpg",
+  "./images/p1s-ams2-pro.webp",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/apple-touch-icon.png",

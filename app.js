@@ -202,7 +202,7 @@ const APP_NAME = "Sellers Family Print Queue";
 function brandHtml(compact) {
   return `
     <a class="brand${compact ? " compact" : ""}" href="#/">
-      <img src="images/p1s-ams2-pro.jpg" width="1100" height="1427" alt="Bambu Lab P1S with the AMS 2 Pro on top" />
+      <img src="images/p1s-ams2-pro.webp" width="664" height="900" alt="Bambu Lab P1S with the AMS 2 Pro on top" />
       ${compact ? `<span class="brand-name">${APP_NAME}</span>` : ""}
     </a>`;
 }
