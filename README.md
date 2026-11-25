@@ -1,4 +1,4 @@
-# Print ideas for Ronald
+# Sellers Family Print Queue
 
 Share this page with the family:
 
@@ -8,7 +8,7 @@ On an iPhone: open that link in Safari, tap the Share button, then **Add to Home
 
 ## How the family uses it
 
-The first screen asks **Who's printing?** Each person has a tile with an emoji (or their photo) and a number. The number is how many requests they have, and it updates live.
+The first screen is **Sellers Family Print Queue**. Each person has a tile with an emoji (or their photo) and a number. The number is how many requests they have, and it updates live.
 
 Tap your name. On your page:
 

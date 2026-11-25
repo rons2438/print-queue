@@ -1,4 +1,4 @@
-// Who shows up on the "Who's printing?" page.
+// Who shows up on the Sellers Family Print Queue page.
 //
 // To add someone later, copy a line. Keep the id in lowercase letters,
 // numbers, or dashes (no spaces). Don't change an id later: requests and

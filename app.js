@@ -180,7 +180,7 @@ function friendlyAuthError(error) {
 function friendlyRulesError(error) {
   const code = error?.code || "";
   if (code === "storage/unauthorized") {
-    return "Photos aren't allowed yet. Ronald still needs to publish the Storage rules for the print-queue folder. The README lists the steps.";
+    return "Photos aren't allowed yet. Ronald still needs to publish the Storage rules for Sellers Family Print Queue. The README lists the steps.";
   }
   if (code === "permission-denied") {
     return "That isn't allowed yet. Ronald still needs to publish the database rules. The README lists the steps. The church app is unchanged.";
@@ -197,10 +197,13 @@ function showInstallHint() {
   return ios && !standalone && !hidden;
 }
 
+const APP_NAME = "Sellers Family Print Queue";
+
 function brandHtml(compact) {
   return `
     <a class="brand${compact ? " compact" : ""}" href="#/">
       <img src="images/p1s-ams2-pro.jpg" width="1100" height="1427" alt="Bambu Lab P1S with the AMS 2 Pro on top" />
+      ${compact ? `<span class="brand-name">${APP_NAME}</span>` : ""}
     </a>`;
 }
 
@@ -214,8 +217,7 @@ function homeHtml() {
   return `
     ${brandHtml(false)}
     <header class="intro">
-      <p class="eyebrow">Sellers family</p>
-      <h1>Who's printing?</h1>
+      <h1 class="app-title">Sellers Family Print Queue</h1>
       <p class="lede">Tap your name. Send Ronald a model, and keep an eye on your own requests.</p>
     </header>
     ${hint}
@@ -425,16 +427,16 @@ function adminHtml() {
 
 function paintPage(route) {
   if (route.kind === "home") {
-    document.title = "Who's printing?";
+    document.title = APP_NAME;
     appRoot.innerHTML = homeHtml();
   } else if (route.kind === "profile") {
-    document.title = `${route.profile.name}'s prints`;
+    document.title = `${route.profile.name} · ${APP_NAME}`;
     appRoot.innerHTML = profileHtml(route.profile);
   } else if (route.kind === "all") {
-    document.title = "Whole print queue";
+    document.title = `Whole queue · ${APP_NAME}`;
     appRoot.innerHTML = allHtml();
   } else {
-    document.title = "Print queue";
+    document.title = APP_NAME;
     appRoot.innerHTML = missingHtml();
   }
   window.scrollTo(0, 0);
@@ -849,7 +851,7 @@ async function start() {
   }, (error) => {
     state.listReady = true;
     state.listError = error?.code === "permission-denied"
-      ? "The shared list isn't open yet. Ronald still needs to publish the print-queue database rules (see the README). You can look around, but new requests won't save until then."
+      ? "The shared list isn't open yet. Ronald still needs to publish the Sellers Family Print Queue database rules (see the README). You can look around, but new requests won't save until then."
       : "Couldn't load the list. Check the connection and try again.";
     render();
   });

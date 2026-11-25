@@ -1,7 +1,7 @@
 {
-  "name": "Who's printing?",
-  "short_name": "Print Queue",
-  "description": "Suggest 3D prints for Ronald to make.",
+  "name": "Sellers Family Print Queue",
+  "short_name": "Sellers Print Queue",
+  "description": "Sellers Family Print Queue. Suggest 3D prints for Ronald to make.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
