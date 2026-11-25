@@ -26,6 +26,9 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          # Turn Pages on the first time this runs, using GitHub Actions as the source.
+          enablement: true
 
       - name: Upload site
         uses: actions/upload-pages-artifact@v3

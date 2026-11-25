@@ -97,17 +97,18 @@ Paste this into **Storage** rules, not Firestore rules. They are different pages
 
 After steps 2 and 3, requests save and photos show up for everyone. If only step 2 is done, the queue works and photos show a short message until step 3 is done.
 
-### 4. Turn on the public website
+### 4. The public website
 
-This repo includes a GitHub Actions workflow that publishes the site. GitHub still needs Pages turned on once:
+Merging to `main` runs a GitHub Actions workflow that publishes the site and turns GitHub Pages on the first time. The address is:
+
+https://rons2438.github.io/print-queue/
+
+If that link is still a “404” after the Actions run finishes, turn Pages on by hand:
 
 1. Open this repo on GitHub → **Settings** → **Pages**.
 2. Under **Build and deployment**, set **Source** to **GitHub Actions**.
-3. If that choice is not there yet, choose **Deploy from a branch**, branch `main`, folder `/ (root)`. That works too.
-
-The live address is https://rons2438.github.io/print-queue/
-
-Merging to `main` publishes the next version.
+3. If that choice is not there, choose **Deploy from a branch**, branch `main`, folder `/ (root)`.
+4. Open the **Actions** tab, open the failed “Deploy GitHub Pages” run, and click **Re-run**.
 
 ## If sign-in works but you cannot change status
 
