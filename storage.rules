@@ -1,0 +1,36 @@
+rules_version = '2';
+
+// =============================================================================
+// DO NOT publish this file by itself over the church app's Storage rules.
+//
+// The church project already uses Cloud Storage (flyers, event videos,
+// event montages, family guest photos, photo drops, avatars, and
+// home/banner.jpg). Those rules live in the Firebase console, not in the
+// public website repo. Replacing them with only this file would block
+// church uploads.
+//
+// Profile pictures for this app go in print-queue/profiles/ only.
+// Paste the BEGIN/END block into the existing Storage rules. See the README.
+// =============================================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Paste the church app's existing storage match blocks above this line
+    // if you ever publish from this file.
+
+    // BEGIN PRINT QUEUE STORAGE — copy from the next line through END
+
+    match /print-queue/profiles/{fileName} {
+      allow read: if true;
+      // Family phones upload a resized JPEG (about 256px, well under 400KB).
+      // No sign-in: each person's page has the photo button.
+      allow create, update: if request.resource.size < 400 * 1024
+        && request.resource.contentType == "image/jpeg"
+        && fileName.matches("^[a-z0-9-]+\\.jpg$");
+      allow delete: if fileName.matches("^[a-z0-9-]+\\.jpg$");
+    }
+
+    // END PRINT QUEUE STORAGE
+  }
+}
