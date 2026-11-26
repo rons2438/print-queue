@@ -101,12 +101,33 @@ service cloud.firestore {
         && data.updatedAt == request.time;
     }
 
+    function pqValidPreviewUpdate() {
+      let data = request.resource.data;
+      return data.diff(resource.data).affectedKeys().hasOnly(["previewImageUrl", "previewTitle", "previewFetched"])
+        && data.previewFetched == true
+        && data.previewTitle is string
+        && data.previewTitle.size() <= 180
+        && data.previewImageUrl is string
+        && data.previewImageUrl.size() <= 2000
+        && (data.previewImageUrl == "" || data.previewImageUrl.matches("^https://.+"));
+    }
+
+    function pqValidRequestPhoto() {
+      let data = request.resource.data;
+      return data.diff(resource.data).affectedKeys().hasOnly(["photoUrl"])
+        && data.photoUrl is string
+        && data.photoUrl.size() < 2000
+        && data.photoUrl.matches("^https://firebasestorage\\.googleapis\\.com/.+");
+    }
+
     match /printSuggestions/{id} {
       allow read: if true;
       allow create: if pqValidNewSuggestion();
       allow update: if pqIsAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"])
         && pqValidStatus(request.resource.data.status);
+      allow update: if pqValidPreviewUpdate();
+      allow update: if pqValidRequestPhoto();
       allow delete: if pqIsAdmin();
     }
 

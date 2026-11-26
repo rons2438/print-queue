@@ -31,6 +31,15 @@ service firebase.storage {
       allow delete: if fileName.matches("^[a-z0-9-]+\\.jpg$");
     }
 
+    match /print-queue/requests/{fileName} {
+      allow read: if true;
+      // Optional picture of a requested print. Resized on the phone first.
+      allow create, update: if request.resource.size < 500 * 1024
+        && request.resource.contentType == "image/jpeg"
+        && fileName.matches("^[A-Za-z0-9_-]+\\.jpg$");
+      allow delete: if fileName.matches("^[A-Za-z0-9_-]+\\.jpg$");
+    }
+
     // END PRINT QUEUE STORAGE
   }
 }

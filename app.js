@@ -55,6 +55,8 @@ const state = {
   cardError: "",
   photoBusy: false,
   photoMessage: "",
+  previewMemory: {},
+  requestPhotos: {},
 };
 
 let auth;
@@ -252,6 +254,9 @@ function profileHtml(profile) {
       <input id="url" name="url" type="text" inputmode="url" required maxlength="2000" placeholder="https://www.printables.com/…" autocapitalize="off" autocorrect="off" spellcheck="false" />
       <label for="notes">Notes <span class="optional">(optional — color, size, who it's for)</span></label>
       <textarea id="notes" name="notes" maxlength="1000" rows="3" placeholder="Red, about 4 inches, for Willow"></textarea>
+      <button type="button" class="ghost" data-action="pick-shot">Add a picture of it (optional)</button>
+      <input id="shot-input" class="file-input" type="file" accept="image/*" />
+      <p id="shot-name" class="fine"></p>
       <p class="form-error error" role="alert"></p>
       <p class="form-ok ok" role="status"></p>
       <button type="submit">Add to the queue</button>
@@ -290,11 +295,26 @@ function missingHtml() {
     <p class="subnav"><a href="#/">Back to profiles</a></p>`;
 }
 
-function avatarInner(profile, photoUrl, className) {
+function cycleProgress(profileId) {
+  const items = state.suggestions.filter((item) => item.profileId === profileId);
+  const done = items.filter((item) => item.status === "done").length;
+  const inCycle = items.filter((item) => item.status === "queued" || item.status === "printing" || item.status === "done").length;
+  if (inCycle === 0) return null;
+  return done / inCycle;
+}
+
+function progressMarkup(progress) {
+  if (progress === null) return "";
+  const percent = Math.round(progress * 100);
+  return `<span class="progress" style="--p:${progress}" role="img" aria-label="${percent}% of the current prints are finished"><span class="progress-shade"></span><span class="progress-ring"></span></span>`;
+}
+
+function avatarInner(profile, photoUrl, className, withProgress = false) {
   const face = photoUrl
     ? `<img src="${escapeHtml(photoUrl)}" alt="" />`
     : `<span class="${className || "emoji"}" aria-hidden="true">${profile ? profile.emoji : "🙂"}</span>`;
-  return `<span class="avatar-clip">${face}</span>`;
+  const progress = withProgress && profile ? progressMarkup(cycleProgress(profile.id)) : "";
+  return `<span class="avatar-clip">${face}${progress}</span>`;
 }
 
 function gridHtml() {
@@ -302,11 +322,13 @@ function gridHtml() {
     const count = countFor(profile.id);
     const photoUrl = photoFor(profile.id);
     const requests = count === null ? "" : count === 1 ? ", 1 request" : `, ${count} requests`;
+    const progress = cycleProgress(profile.id);
+    const progressLabel = progress === null ? "" : `, ${Math.round(progress * 100)} percent finished`;
     const badge = count === null ? "" : `<span class="count">${count}</span>`;
     return `
-      <a class="tile" href="#/${profile.id}" style="--tile:${profile.color}" aria-label="${escapeHtml(profile.name + requests)}">
+      <a class="tile" href="#/${profile.id}" style="--tile:${profile.color}" aria-label="${escapeHtml(profile.name + requests + progressLabel)}">
         <span class="avatar${photoUrl ? " has-photo" : ""}">
-          ${avatarInner(profile, photoUrl)}
+          ${avatarInner(profile, photoUrl, "emoji", true)}
           ${badge}
         </span>
         <span class="tile-name">${escapeHtml(profile.name)}</span>
@@ -356,6 +378,41 @@ function adminControls(item) {
     </div>`;
 }
 
+function rememberedPreview(item) {
+  return state.previewMemory[item.id] || null;
+}
+
+function rememberedPhoto(item) {
+  return state.requestPhotos[item.id] || item.photoUrl || "";
+}
+
+function previewCardHtml(item, href) {
+  if (!href) return "";
+  const memory = rememberedPreview(item);
+  const photo = safeImageUrl(rememberedPhoto(item));
+  const unfurled = safeImageUrl(memory?.image || item.previewImageUrl || "");
+  const image = photo || unfurled;
+  const caption = (photo ? item.title : (memory?.title || item.previewTitle || item.title)) || hostLabel(href);
+  const domain = hostLabel(href);
+  const media = image
+    ? `<img src="${escapeHtml(image)}" alt="" data-fallback="${escapeHtml(domain)}" />`
+    : `<span class="preview-fallback">${escapeHtml(domain)}</span>`;
+  return `
+    <a class="preview" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">
+      <span class="preview-media">${media}</span>
+      <span class="preview-caption">${escapeHtml(caption)}</span>
+    </a>`;
+}
+
+function requestPhotoControl(item) {
+  const hasPhoto = Boolean(rememberedPhoto(item));
+  return `
+    <label class="ghost file-label">
+      ${hasPhoto ? "Replace the picture" : "Add a picture"}
+      <input type="file" accept="image/*" data-action="request-photo" data-id="${escapeHtml(item.id)}" />
+    </label>`;
+}
+
 function cardHtml(item, showPerson) {
   const status = STATUSES.find((entry) => entry.id === item.status) || STATUSES[0];
   const href = normalizeUrl(item.url);
@@ -371,7 +428,9 @@ function cardHtml(item, showPerson) {
       </div>
       <p class="meta">${showPerson ? `${personLink(item)} · ` : ""}${escapeHtml(formatDate(item.createdAt))}</p>
       ${item.notes ? `<p class="notes">${escapeHtml(item.notes)}</p>` : ""}
+      ${previewCardHtml(item, href)}
       ${href ? `<a class="model-link" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">View on ${escapeHtml(hostLabel(href))}</a>` : ""}
+      ${requestPhotoControl(item)}
       ${state.admin ? adminControls(item) : ""}
     </article>`;
 }
@@ -457,7 +516,7 @@ function paintDynamic(route) {
     const photoUrl = photoFor(route.profile.id);
     if (avatar) {
       avatar.classList.toggle("has-photo", Boolean(photoUrl));
-      avatar.innerHTML = avatarInner(route.profile, photoUrl);
+      avatar.innerHTML = avatarInner(route.profile, photoUrl, "emoji", true);
     }
     const photoBtn = document.getElementById("photo-btn");
     const emojiBtn = document.getElementById("emoji-btn");
@@ -487,7 +546,10 @@ function paintDynamic(route) {
   if (cardError) cardError.textContent = state.cardError;
 
   const cards = document.getElementById("cards");
-  if (cards) cards.innerHTML = cardsHtml(route);
+  if (cards) {
+    cards.innerHTML = cardsHtml(route);
+    schedulePreviews(visibleItems(route));
+  }
 
   const slot = document.getElementById("admin-slot");
   if (slot) {
@@ -525,6 +587,10 @@ function toSuggestion(snapshot) {
     notes: typeof data.notes === "string" ? data.notes : "",
     status: STATUSES.some((status) => status.id === data.status) ? data.status : "suggested",
     createdAt: data.createdAt || null,
+    photoUrl: typeof data.photoUrl === "string" ? data.photoUrl : "",
+    previewImageUrl: typeof data.previewImageUrl === "string" ? data.previewImageUrl : "",
+    previewTitle: typeof data.previewTitle === "string" ? data.previewTitle : "",
+    previewFetched: data.previewFetched === true,
   };
 }
 
@@ -561,6 +627,7 @@ async function submitSuggestion(form) {
   const title = form.title.value.trim();
   const url = normalizeUrl(form.url.value);
   const notes = form.notes.value.trim();
+  const shot = document.getElementById("shot-input")?.files?.[0] || null;
   const showError = (message) => {
     errorEl.textContent = message;
     okEl.textContent = "";
@@ -573,7 +640,7 @@ async function submitSuggestion(form) {
   const original = button.textContent;
   button.textContent = "Sending…";
   try {
-    await addDoc(collection(db, "printSuggestions"), {
+    const created = await addDoc(collection(db, "printSuggestions"), {
       profileId: route.profile.id,
       name: route.profile.name,
       title,
@@ -582,9 +649,14 @@ async function submitSuggestion(form) {
       status: "suggested",
       createdAt: serverTimestamp(),
     });
+    if (shot) await attachRequestPhoto(created.id, shot);
     form.title.value = "";
     form.url.value = "";
     form.notes.value = "";
+    const shotInput = document.getElementById("shot-input");
+    if (shotInput) shotInput.value = "";
+    const shotName = document.getElementById("shot-name");
+    if (shotName) shotName.textContent = "";
     errorEl.textContent = "";
     okEl.textContent = "Sent. It shows here for everyone.";
   } catch (error) {
@@ -617,6 +689,153 @@ async function deleteSuggestion(id) {
     state.pendingDelete = "";
     render();
   }
+}
+
+function timeoutSignal(ms) {
+  if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") return AbortSignal.timeout(ms);
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
+
+function safeImageUrl(url) {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return "";
+    return url;
+  } catch {
+    return "";
+  }
+}
+
+async function microlink(url, query) {
+  const response = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}${query}`, {
+    signal: timeoutSignal(20000),
+  });
+  if (!response.ok) return null;
+  const body = await response.json();
+  if (body.status !== "success") return null;
+  return body.data || null;
+}
+
+function microlinkImage(data) {
+  const image = data?.image;
+  const url = typeof image === "string" ? image : image?.url;
+  return safeImageUrl(url || "");
+}
+
+async function printablesPreview(url) {
+  const match = String(url).match(/printables\.com\/model\/(\d+)/i);
+  if (!match) return null;
+  const query = `query { print(id: "${match[1]}") { name image { filePath } } }`;
+  const endpoint = `https://api.printables.com/graphql?query=${encodeURIComponent(query)}`;
+  const response = await fetch(endpoint, { signal: timeoutSignal(12000) });
+  if (!response.ok) return null;
+  const body = await response.json();
+  const print = body?.data?.print;
+  const filePath = typeof print?.image?.filePath === "string" ? print.image.filePath.replace(/^\/+/, "") : "";
+  return {
+    image: filePath ? safeImageUrl(`https://media.printables.com/${filePath}`) : "",
+    title: typeof print?.name === "string" ? print.name.slice(0, 180) : "",
+  };
+}
+
+async function unfurl(url) {
+  try {
+    const direct = await printablesPreview(url);
+    if (direct?.image) return direct;
+  } catch {
+    // Printables' API does not allow browser calls. Fall through.
+  }
+  const meta = await microlink(url, "");
+  const title = typeof meta?.title === "string" ? meta.title.slice(0, 180) : "";
+  const image = microlinkImage(meta);
+  if (image) return { image, title };
+  // A failed metadata lookup usually means the site blocked the scraper.
+  // Its screenshot is the block page, so leave a placeholder instead.
+  if (!meta) return title ? { image: "", title } : null;
+  const shot = await microlink(url, "&screenshot=true&meta=false");
+  const screenshot = safeImageUrl(shot?.screenshot?.url || "");
+  if (!title && !screenshot) return null;
+  return { image: screenshot, title };
+}
+
+const previewQueued = new Set();
+let previewRunning = 0;
+const previewWait = [];
+
+function schedulePreviews(items) {
+  for (const item of items) {
+    const memory = state.previewMemory[item.id];
+    if (rememberedPhoto(item) || item.previewFetched || memory?.fetched || previewQueued.has(item.id)) continue;
+    if (!normalizeUrl(item.url)) continue;
+    previewQueued.add(item.id);
+    previewWait.push(item);
+  }
+  pumpPreviews();
+}
+
+function pumpPreviews() {
+  while (previewRunning < 2 && previewWait.length) {
+    const item = previewWait.shift();
+    previewRunning += 1;
+    savePreview(item).finally(() => {
+      previewRunning -= 1;
+      previewQueued.delete(item.id);
+      pumpPreviews();
+    });
+  }
+}
+
+async function savePreview(item) {
+  let result = null;
+  try {
+    result = await unfurl(item.url);
+  } catch {
+    result = null;
+  }
+  if (!result) {
+    state.previewMemory[item.id] = { image: "", title: "", fetched: true };
+    return;
+  }
+  state.previewMemory[item.id] = { image: result.image, title: result.title, fetched: true };
+  render();
+  try {
+    await updateDoc(doc(db, "printSuggestions", item.id), {
+      previewImageUrl: result.image,
+      previewTitle: result.title,
+      previewFetched: true,
+    });
+  } catch {
+    // The picture still shows from memory until the database rules are published.
+  }
+}
+
+async function attachRequestPhoto(id, file) {
+  if (!file || !file.type.startsWith("image/")) return;
+  let blob;
+  try {
+    blob = await resizeToJpeg(file, 960);
+  } catch {
+    state.cardError = "Couldn't read that picture. Try a JPEG or PNG.";
+    render();
+    return;
+  }
+  const localUrl = URL.createObjectURL(blob);
+  state.requestPhotos[id] = localUrl;
+  render();
+  try {
+    const storageRef = ref(storage, `print-queue/requests/${id}.jpg`);
+    await uploadBytes(storageRef, blob, { contentType: "image/jpeg" });
+    const url = await getDownloadURL(storageRef);
+    state.requestPhotos[id] = url;
+    await updateDoc(doc(db, "printSuggestions", id), { photoUrl: url });
+  } catch (error) {
+    state.cardError = error?.code === "storage/unauthorized" || error?.code === "permission-denied"
+      ? "The picture shows on this phone. Ronald still needs to publish the updated print rules so everyone else keeps it."
+      : friendlyRulesError(error);
+  }
+  render();
 }
 
 async function resizeToJpeg(file, maxEdge) {
@@ -798,6 +1017,8 @@ document.addEventListener("click", (event) => {
     deleteSuggestion(button.dataset.id);
   } else if (action === "pick-photo") {
     document.getElementById("photo-input")?.click();
+  } else if (action === "pick-shot") {
+    document.getElementById("shot-input")?.click();
   } else if (action === "use-emoji") {
     useEmoji();
   } else if (action === "google") {
@@ -819,8 +1040,26 @@ document.addEventListener("change", (event) => {
     updateStatus(target.dataset.id, target.value);
   } else if (target.id === "photo-input" && target instanceof HTMLInputElement) {
     uploadPhoto(target.files && target.files[0]);
+  } else if (target.id === "shot-input" && target instanceof HTMLInputElement) {
+    const name = document.getElementById("shot-name");
+    const file = target.files && target.files[0];
+    if (name) name.textContent = file ? `Picture ready: ${file.name}` : "";
+  } else if (target.dataset.action === "request-photo" && target instanceof HTMLInputElement) {
+    const file = target.files && target.files[0];
+    if (file && target.dataset.id) attachRequestPhoto(target.dataset.id, file);
   }
 });
+
+document.addEventListener("error", (event) => {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement) || !image.dataset.fallback) return;
+  const media = image.parentElement;
+  const fallback = document.createElement("span");
+  fallback.className = "preview-fallback";
+  fallback.textContent = image.dataset.fallback;
+  image.replaceWith(fallback);
+  if (media) media.dataset.broken = "true";
+}, true);
 
 window.addEventListener("hashchange", () => render());
 

@@ -21,6 +21,12 @@ Nobody needs an account to suggest a print or to set a photo.
 
 There is also a link, **See the whole queue**, for the combined list.
 
+Each request shows a picture above the model link. The app looks up the picture from the model page (MakerWorld, Thingiverse, and a page photo for Printables). You can also attach your own photo when you submit, or add one later. The first time a picture is found, it is saved on that request so it does not have to be looked up again.
+
+On the name picker, a soft dark shade and a thin light ring show print progress. It counts finished prints against the ones Ronald has queued, is printing, or has finished. Ideas that are still only "Suggested" do not start the ring. If nobody has anything in that cycle, the ring stays off.
+
+If request pictures do not stay for everyone, publish the print-queue rules again (steps 2 and 3 below). The blocks in this project now include the picture fields and a `print-queue/requests/` folder. Paste those updated blocks over the old print-queue blocks only. Leave the church rules in place.
+
 ## What Ronald can do
 
 At the bottom of the page, open **Ronald's sign-in**. Sign in with the same account you use for the Plainview Baptist Church app.
