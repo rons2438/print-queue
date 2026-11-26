@@ -295,12 +295,20 @@ function missingHtml() {
     <p class="subnav"><a href="#/">Back to profiles</a></p>`;
 }
 
+function stageProgress(status) {
+  if (status === "queued") return 0.25;
+  if (status === "printing") return 0.5;
+  if (status === "done") return 1;
+  return null;
+}
+
 function cycleProgress(profileId) {
-  const items = state.suggestions.filter((item) => item.profileId === profileId);
-  const done = items.filter((item) => item.status === "done").length;
-  const inCycle = items.filter((item) => item.status === "queued" || item.status === "printing" || item.status === "done").length;
-  if (inCycle === 0) return null;
-  return done / inCycle;
+  const stages = state.suggestions
+    .filter((item) => item.profileId === profileId)
+    .map((item) => stageProgress(item.status))
+    .filter((value) => value !== null);
+  if (stages.length === 0) return null;
+  return stages.reduce((sum, value) => sum + value, 0) / stages.length;
 }
 
 function progressMarkup(progress) {
@@ -394,12 +402,13 @@ function previewCardHtml(item, href) {
   const image = photo || unfurled;
   const caption = (photo ? item.title : (memory?.title || item.previewTitle || item.title)) || hostLabel(href);
   const domain = hostLabel(href);
-  const media = image
-    ? `<img src="${escapeHtml(image)}" alt="" data-fallback="${escapeHtml(domain)}" />`
+  const shown = image ? displayImage(image) : "";
+  const media = shown
+    ? `<img src="${escapeHtml(shown)}" alt="" data-raw="${escapeHtml(image)}" data-fallback="${escapeHtml(domain)}" />`
     : `<span class="preview-fallback">${escapeHtml(domain)}</span>`;
   return `
     <a class="preview" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">
-      <span class="preview-media">${media}</span>
+      <span class="preview-media">${media}${progressMarkup(stageProgress(item.status))}</span>
       <span class="preview-caption">${escapeHtml(caption)}</span>
     </a>`;
 }
@@ -724,14 +733,36 @@ function microlinkImage(data) {
   return safeImageUrl(url || "");
 }
 
+function displayImage(url) {
+  const safe = safeImageUrl(url);
+  if (!safe || safe.startsWith("data:")) return safe;
+  const bare = safe.replace(/^https?:\/\//, "");
+  return `https://images.weserv.nl/?url=${encodeURIComponent(bare)}&w=900&h=560&fit=cover&we`;
+}
+
+function canonicalModelUrl(url) {
+  const normalized = normalizeUrl(url);
+  if (!normalized) return "";
+  const parsed = new URL(normalized);
+  parsed.hash = "";
+  ["appSharePlatform", "utm_source", "utm_medium", "utm_campaign", "utm_content", "from"].forEach((key) => {
+    parsed.searchParams.delete(key);
+  });
+  return parsed.toString();
+}
+
 async function printablesPreview(url) {
-  const match = String(url).match(/printables\.com\/model\/(\d+)/i);
+  const match = String(url).match(/printables\.com\/(?:model|print)\/(\d+)/i);
   if (!match) return null;
   const query = `query { print(id: "${match[1]}") { name image { filePath } } }`;
   const endpoint = `https://api.printables.com/graphql?query=${encodeURIComponent(query)}`;
-  const response = await fetch(endpoint, { signal: timeoutSignal(12000) });
+  // The GraphQL API blocks browser calls. allorigins fetches it and adds CORS.
+  const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(endpoint)}`, {
+    signal: timeoutSignal(15000),
+  });
   if (!response.ok) return null;
-  const body = await response.json();
+  const wrapped = await response.json();
+  const body = JSON.parse(wrapped.contents || "{}");
   const print = body?.data?.print;
   const filePath = typeof print?.image?.filePath === "string" ? print.image.filePath.replace(/^\/+/, "") : "";
   return {
@@ -741,23 +772,27 @@ async function printablesPreview(url) {
 }
 
 async function unfurl(url) {
-  try {
-    const direct = await printablesPreview(url);
-    if (direct?.image) return direct;
-  } catch {
-    // Printables' API does not allow browser calls. Fall through.
+  const target = canonicalModelUrl(url);
+  if (!target) return null;
+  if (/printables\.com/i.test(target)) {
+    try {
+      const direct = await printablesPreview(target);
+      if (direct?.image) return direct;
+    } catch {
+      // Try the general lookup below.
+    }
   }
-  const meta = await microlink(url, "");
+  const meta = await microlink(target, "");
   const title = typeof meta?.title === "string" ? meta.title.slice(0, 180) : "";
   const image = microlinkImage(meta);
   if (image) return { image, title };
-  // A failed metadata lookup usually means the site blocked the scraper.
-  // Its screenshot is the block page, so leave a placeholder instead.
-  if (!meta) return title ? { image: "", title } : null;
-  const shot = await microlink(url, "&screenshot=true&meta=false");
-  const screenshot = safeImageUrl(shot?.screenshot?.url || "");
-  if (!title && !screenshot) return null;
-  return { image: screenshot, title };
+  if (!meta) {
+    const retry = await microlink(target, "&force=true");
+    const retryTitle = typeof retry?.title === "string" ? retry.title.slice(0, 180) : "";
+    const retryImage = microlinkImage(retry);
+    if (retryImage || retryTitle) return { image: retryImage, title: retryTitle };
+  }
+  return title ? { image: "", title } : null;
 }
 
 const previewQueued = new Set();
@@ -767,7 +802,8 @@ const previewWait = [];
 function schedulePreviews(items) {
   for (const item of items) {
     const memory = state.previewMemory[item.id];
-    if (rememberedPhoto(item) || item.previewFetched || memory?.fetched || previewQueued.has(item.id)) continue;
+    const savedImage = safeImageUrl(memory?.image || item.previewImageUrl || "");
+    if (rememberedPhoto(item) || savedImage || (memory?.attempts || 0) >= 2 || previewQueued.has(item.id)) continue;
     if (!normalizeUrl(item.url)) continue;
     previewQueued.add(item.id);
     previewWait.push(item);
@@ -794,11 +830,12 @@ async function savePreview(item) {
   } catch {
     result = null;
   }
-  if (!result) {
-    state.previewMemory[item.id] = { image: "", title: "", fetched: true };
+  const attempts = (state.previewMemory[item.id]?.attempts || 0) + 1;
+  if (!result?.image) {
+    state.previewMemory[item.id] = { image: "", title: result?.title || "", fetched: false, attempts };
     return;
   }
-  state.previewMemory[item.id] = { image: result.image, title: result.title, fetched: true };
+  state.previewMemory[item.id] = { image: result.image, title: result.title, fetched: true, attempts };
   render();
   try {
     await updateDoc(doc(db, "printSuggestions", item.id), {
@@ -807,7 +844,7 @@ async function savePreview(item) {
       previewFetched: true,
     });
   } catch {
-    // The picture still shows from memory until the database rules are published.
+    // The picture still shows from memory until the database rules allow this save.
   }
 }
 
@@ -1053,6 +1090,12 @@ document.addEventListener("change", (event) => {
 document.addEventListener("error", (event) => {
   const image = event.target;
   if (!(image instanceof HTMLImageElement) || !image.dataset.fallback) return;
+  if (image.dataset.raw && image.getAttribute("src") !== image.dataset.raw) {
+    const raw = image.dataset.raw;
+    delete image.dataset.raw;
+    image.src = raw;
+    return;
+  }
   const media = image.parentElement;
   const fallback = document.createElement("span");
   fallback.className = "preview-fallback";
@@ -1112,6 +1155,12 @@ async function start() {
   });
 
   if ("serviceWorker" in navigator) {
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
     navigator.serviceWorker.register("./sw.js").catch(() => {});
   }
 }
