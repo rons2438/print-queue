@@ -57,6 +57,12 @@ const state = {
   photoMessage: "",
   previewMemory: {},
   requestPhotos: {},
+  addMode: "",
+  addDraft: null,
+  addNotes: "",
+  pasteValue: "",
+  pendingShare: "",
+  addError: "",
 };
 
 let auth;
@@ -224,6 +230,7 @@ function homeHtml() {
     </header>
     ${hint}
     <p id="banner" class="banner" role="status" hidden></p>
+    <p id="share-note" class="banner" hidden></p>
     <div id="profile-grid" class="grid"></div>
     <p class="subnav"><a href="#/all">See the whole queue</a></p>
     <div id="admin-slot"></div>
@@ -245,6 +252,33 @@ function profileHtml(profile) {
       </div>
       <p id="photo-msg" class="fine" role="status"></p>
     </section>
+    <section class="browse">
+      <h2>Find a model</h2>
+      <div class="site-row">
+        <button type="button" class="site-btn printables" data-action="open-site" data-site="Printables" data-href="https://www.printables.com/">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M6 8h20v4H6zm2 6h16v3H8zm-2 5h20v5H6z"/></svg>
+          Printables
+        </button>
+        <button type="button" class="site-btn makerworld" data-action="open-site" data-site="MakerWorld" data-href="https://makerworld.com/">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M8 22 16 6l8 16H8zm4.2-3h7.6L16 12.2 12.2 19z"/></svg>
+          MakerWorld
+        </button>
+        <button type="button" class="site-btn thingiverse" data-action="open-site" data-site="Thingiverse" data-href="https://www.thingiverse.com/">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M7 7h8v8H7zm10 0h8v8h-8zM7 17h8v8H7zm10 0h8v8h-8z"/></svg>
+          Thingiverse
+        </button>
+      </div>
+      <button type="button" class="site-btn create-own" data-action="open-site" data-site="Tinkercad" data-href="https://www.tinkercad.com/">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M6 20 16 8l10 12H6zm5-3h10l-5-6-5 6z"/></svg>
+        Create your own
+      </button>
+      <p class="makerlab"><a href="https://makerworld.com/en/makerlab" target="_blank" rel="noopener noreferrer">Or try MakerWorld’s free MakerLab tools</a></p>
+      <button type="button" class="add-model" data-action="start-add">Add model to my profile</button>
+      <p class="fine helper">Find a model, tap Share, then Copy Link. Come back and tap Add.</p>
+      <div id="add-slot"></div>
+    </section>
+    <details class="manual">
+      <summary>Type a link and notes instead</summary>
     <form id="add-form">
       <h2>Suggest a print</h2>
       <p class="as">Adding this as <strong>${escapeHtml(profile.name)}</strong>.</p>
@@ -261,6 +295,7 @@ function profileHtml(profile) {
       <p class="form-ok ok" role="status"></p>
       <button type="submit">Add to the queue</button>
     </form>
+    </details>
     <h2>Requests</h2>
     <div id="filters"></div>
     <p id="card-error" class="error" role="alert"></p>
@@ -537,6 +572,7 @@ function paintDynamic(route) {
       emojiBtn.hidden = !photoUrl;
       emojiBtn.disabled = state.photoBusy;
     }
+    paintAddSlot(route.profile);
     const photoMsg = document.getElementById("photo-msg");
     if (photoMsg) {
       photoMsg.textContent = state.photoMessage || (state.photoListError ? "Photos aren't syncing yet. Ronald may still need to publish the rules." : "This picture shows on everyone's phone.");
@@ -559,6 +595,7 @@ function paintDynamic(route) {
     cards.innerHTML = cardsHtml(route);
     schedulePreviews(visibleItems(route));
   }
+  paintModal();
 
   const slot = document.getElementById("admin-slot");
   if (slot) {
@@ -582,7 +619,20 @@ function render() {
     state.photoBusy = false;
     paintPage(route);
   }
+  if (route.kind === "profile") {
+    try { localStorage.setItem("print-queue-last-profile", route.profile.id); } catch { /* ignore */ }
+  }
   paintDynamic(route);
+  const shareNote = document.getElementById("share-note");
+  if (shareNote) {
+    shareNote.hidden = !(route.kind === "home" && state.pendingShare);
+    shareNote.textContent = state.pendingShare ? "Tap your name to add the model you just shared." : "";
+  }
+  if (route.kind === "profile" && state.pendingShare) {
+    const shared = state.pendingShare;
+    state.pendingShare = "";
+    openConfirm(shared);
+  }
 }
 
 function toSuggestion(snapshot) {
@@ -1024,6 +1074,291 @@ async function emailPasswordLink() {
   }
 }
 
+function extractModelUrl(text) {
+  const source = String(text || "");
+  const matches = source.match(/https?:\/\/[^\s<>"']+/gi) || [];
+  const candidates = matches.length ? matches : [source.trim()];
+  for (const raw of candidates) {
+    const url = canonicalModelUrl(raw.replace(/[),.;]+$/, ""));
+    if (!url) continue;
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    if (host.endsWith("printables.com") || host.endsWith("makerworld.com") || host.endsWith("thingiverse.com")) return url;
+    if (host.endsWith("tinkercad.com") && /\/things\//i.test(url)) return url;
+  }
+  return "";
+}
+
+function hideSiteHelp() {
+  try { return localStorage.getItem("print-queue-hide-site-help") === "1"; } catch { return false; }
+}
+
+function currentProfile() {
+  const route = parseRoute();
+  return route.kind === "profile" ? route.profile : null;
+}
+
+function openSite(href) {
+  window.open(href, "_blank", "noopener,noreferrer");
+}
+
+function askToLeave(href, site) {
+  if (hideSiteHelp()) {
+    openSite(href);
+    return;
+  }
+  state.siteHelp = { href, site };
+  paintModal();
+}
+
+function leaveFromHelp() {
+  const help = state.siteHelp;
+  if (!help) return;
+  const box = document.getElementById("skip-site-help");
+  if (box?.checked) {
+    try { localStorage.setItem("print-queue-hide-site-help", "1"); } catch { /* ignore */ }
+  }
+  state.siteHelp = null;
+  paintModal();
+  openSite(help.href);
+}
+
+async function openConfirm(url) {
+  state.addMode = "confirm";
+  state.showPaste = false;
+  state.returnAsk = null;
+  state.addError = "";
+  state.addDraft = { url, title: "", image: "", loading: true };
+  paintAddSlot(currentProfile());
+  paintModal();
+  let result = null;
+  try { result = await unfurl(url); } catch { result = null; }
+  if (state.addDraft?.url !== url) return;
+  state.addDraft = { url, title: result?.title || "", image: result?.image || "", loading: false };
+  paintAddSlot(currentProfile());
+}
+
+async function startAdd() {
+  let url = "";
+  try { url = extractModelUrl(await navigator.clipboard.readText()); } catch { url = ""; }
+  if (url) {
+    await openConfirm(url);
+    return;
+  }
+  state.addMode = "paste";
+  state.addDraft = null;
+  state.addError = "";
+  paintAddSlot(currentProfile());
+}
+
+async function lookupPaste() {
+  const url = extractModelUrl(state.pasteValue || document.getElementById("paste-url")?.value || "");
+  if (!url) {
+    state.addError = "That needs to be a Printables, MakerWorld, Thingiverse, or Tinkercad design link.";
+    paintAddSlot(currentProfile());
+    return;
+  }
+  await openConfirm(url);
+}
+
+async function confirmAdd() {
+  const route = parseRoute();
+  const draft = state.addDraft;
+  if (route.kind !== "profile" || !draft?.url || draft.loading) return;
+  const button = document.getElementById("confirm-add");
+  if (button) button.disabled = true;
+  const title = (draft.title || `Model from ${hostLabel(draft.url)}`).slice(0, 140);
+  try {
+    const created = await addDoc(collection(db, "printSuggestions"), {
+      profileId: route.profile.id,
+      name: route.profile.name,
+      title,
+      url: draft.url,
+      notes: state.addNotes.trim(),
+      status: "suggested",
+      createdAt: serverTimestamp(),
+    });
+    if (draft.image) {
+      state.previewMemory[created.id] = { image: draft.image, title: draft.title, fetched: true, attempts: 1 };
+      try {
+        await updateDoc(doc(db, "printSuggestions", created.id), {
+          previewImageUrl: draft.image,
+          previewTitle: draft.title || "",
+          previewFetched: true,
+        });
+      } catch { /* shown from memory */ }
+    }
+    state.addMode = "";
+    state.addDraft = null;
+    state.addNotes = "";
+    state.pasteValue = "";
+    state.addError = "";
+    state.returnAsk = null;
+    paintAddSlot(route.profile);
+    paintModal();
+  } catch (error) {
+    state.addError = friendlyRulesError(error);
+    paintAddSlot(route.profile);
+  }
+}
+
+function addSlotHtml(profile) {
+  if (!profile) return "";
+  if (state.addMode === "confirm" && state.addDraft) {
+    const draft = state.addDraft;
+    const image = draft.image ? displayImage(draft.image) : "";
+    const media = draft.loading
+      ? `<span class="preview-fallback">Finding the picture…</span>`
+      : image
+        ? `<img src="${escapeHtml(image)}" alt="" />`
+        : `<span class="preview-fallback">${escapeHtml(hostLabel(draft.url))}</span>`;
+    return `
+      <section class="add-panel">
+        <h2>Add this to ${escapeHtml(profile.name)}?</h2>
+        <a class="preview" href="${escapeHtml(draft.url)}" target="_blank" rel="noopener noreferrer">
+          <span class="preview-media">${media}</span>
+          <span class="preview-caption">${escapeHtml(draft.title || draft.url)}</span>
+        </a>
+        <label for="add-notes">Notes <span class="optional">(optional)</span></label>
+        <textarea id="add-notes" maxlength="1000" rows="2">${escapeHtml(state.addNotes)}</textarea>
+        <p class="form-error error" role="alert">${escapeHtml(state.addError)}</p>
+        <button type="button" id="confirm-add" class="add-model" data-action="confirm-add" ${draft.loading ? "disabled" : ""}>Add</button>
+        <button type="button" class="ghost" data-action="cancel-add">Not this one</button>
+      </section>`;
+  }
+  if (state.addMode === "paste") {
+    return `
+      <section class="add-panel">
+        <label for="paste-url">Paste the model link</label>
+        <input id="paste-url" type="text" inputmode="url" value="${escapeHtml(state.pasteValue)}" placeholder="https://…" />
+        <p class="form-error error" role="alert">${escapeHtml(state.addError)}</p>
+        <button type="button" class="add-model" data-action="lookup-paste">Show the picture</button>
+        <button type="button" class="ghost" data-action="cancel-add">Cancel</button>
+      </section>`;
+  }
+  return "";
+}
+
+function paintAddSlot(profile) {
+  const slot = document.getElementById("add-slot");
+  if (!slot) return;
+  const draft = state.addDraft;
+  const key = `${state.addMode}|${draft?.url || ""}|${draft?.loading ? 1 : 0}|${draft?.image || ""}|${state.addError}`;
+  if (slot.dataset.key === key) return;
+  slot.dataset.key = key;
+  slot.innerHTML = addSlotHtml(profile);
+}
+
+function whoChip(profile) {
+  if (!profile) return "";
+  const photo = photoFor(profile.id);
+  const face = photo
+    ? `<img src="${escapeHtml(photo)}" alt="" />`
+    : `<span class="emoji" aria-hidden="true">${profile.emoji}</span>`;
+  return `<span class="who-chip" style="--tile:${profile.color}"><span class="mini">${face}</span>${escapeHtml(profile.name)}</span>`;
+}
+
+function helpSteps(site) {
+  const second = site === "Tinkercad"
+    ? "Copy the design link (the address with tinkercad.com/things/…), or use Share and copy that link."
+    : "Tap Share, then Copy Link.";
+  return `
+    <ol class="steps">
+      <li><span class="step-no">1</span> Find a model you like.</li>
+      <li><span class="step-no">2</span> ${second}</li>
+      <li><span class="step-no">3</span> Come back to this app.</li>
+      <li><span class="step-no">4</span> Tap <strong>Add model</strong>. It pulls in the picture.</li>
+      <li><span class="step-no">5</span> Tap <strong>Add</strong>.</li>
+    </ol>`;
+}
+
+function paintModal() {
+  const root = document.getElementById("modal-root");
+  if (!root) return;
+  const profile = currentProfile();
+  if (state.siteHelp && profile) {
+    const help = state.siteHelp;
+    root.innerHTML = `
+      <div class="modal-back" data-action="close-help">
+        <section class="modal" role="dialog" aria-modal="true" aria-labelledby="help-title">
+          <p class="modal-who">Saving it for ${whoChip(profile)}</p>
+          <h2 id="help-title">How to bring a ${escapeHtml(help.site)} model back</h2>
+          ${helpSteps(help.site)}
+          <label class="check"><input id="skip-site-help" type="checkbox" /> Don't show again</label>
+          <button type="button" class="add-model" data-action="leave-site">Got it, take me there</button>
+          <button type="button" class="ghost" data-action="close-help">Stay here</button>
+        </section>
+      </div>`;
+    return;
+  }
+  if (state.returnAsk && profile) {
+    const ask = state.returnAsk;
+    const image = ask.image ? displayImage(ask.image) : "";
+    const media = ask.loading
+      ? `<span class="preview-fallback">Finding the picture…</span>`
+      : image
+        ? `<img src="${escapeHtml(image)}" alt="" />`
+        : `<span class="preview-fallback">${escapeHtml(hostLabel(ask.url))}</span>`;
+    root.innerHTML = `
+      <div class="modal-back">
+        <section class="modal" role="dialog" aria-modal="true" aria-labelledby="return-title">
+          <h2 id="return-title">Add this model to ${escapeHtml(profile.name)}'s profile?</h2>
+          <p class="modal-who">${whoChip(profile)}</p>
+          <a class="preview" href="${escapeHtml(ask.url)}" target="_blank" rel="noopener noreferrer">
+            <span class="preview-media">${media}</span>
+            <span class="preview-caption">${escapeHtml(ask.title || ask.url)}</span>
+          </a>
+          <button type="button" class="add-model" data-action="accept-return" ${ask.loading ? "disabled" : ""}>Add</button>
+          <button type="button" class="ghost" data-action="dismiss-return">Not now</button>
+        </section>
+      </div>`;
+    return;
+  }
+  root.innerHTML = "";
+}
+
+async function offerClipboard() {
+  const profile = currentProfile();
+  if (!profile || state.returnAsk || state.siteHelp || state.addMode === "confirm") return;
+  if (document.visibilityState && document.visibilityState !== "visible") return;
+  let text = "";
+  try { text = await navigator.clipboard.readText(); } catch { return; }
+  const url = extractModelUrl(text);
+  if (!url || url === state.lastOffered) return;
+  state.lastOffered = url;
+  state.returnAsk = { url, title: "", image: "", loading: true };
+  paintModal();
+  let result = null;
+  try { result = await unfurl(url); } catch { result = null; }
+  if (state.returnAsk?.url !== url) return;
+  state.returnAsk = { url, title: result?.title || "", image: result?.image || "", loading: false };
+  paintModal();
+}
+
+function acceptReturn() {
+  const ask = state.returnAsk;
+  if (!ask?.url) return;
+  state.returnAsk = null;
+  state.addNotes = "";
+  openConfirm(ask.url);
+  if (ask.title || ask.image) {
+    state.addDraft = { url: ask.url, title: ask.title, image: ask.image, loading: false };
+    paintAddSlot(currentProfile());
+  }
+}
+
+function consumeShare() {
+  const params = new URLSearchParams(location.search);
+  const blob = [params.get("url"), params.get("text"), params.get("title")].filter(Boolean).join(" ");
+  const found = extractModelUrl(blob);
+  if (!found) return;
+  const hash = location.hash || "";
+  history.replaceState(null, "", `${location.pathname}${hash}`);
+  let last = "";
+  try { last = localStorage.getItem("print-queue-last-profile") || ""; } catch { last = ""; }
+  state.pendingShare = found;
+  if (last && profileById(last) && parseRoute().profile?.id !== last) location.hash = `#/${last}`;
+}
+
 document.addEventListener("submit", (event) => {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
@@ -1056,6 +1391,32 @@ document.addEventListener("click", (event) => {
     document.getElementById("photo-input")?.click();
   } else if (action === "pick-shot") {
     document.getElementById("shot-input")?.click();
+  } else if (action === "open-site") {
+    askToLeave(button.dataset.href, button.dataset.site);
+  } else if (action === "leave-site") {
+    leaveFromHelp();
+  } else if (action === "close-help") {
+    const onBackdrop = event.target.classList.contains("modal-back");
+    const onStay = button.classList.contains("ghost");
+    if (!onBackdrop && !onStay) return;
+    state.siteHelp = null;
+    paintModal();
+  } else if (action === "start-add") {
+    startAdd();
+  } else if (action === "lookup-paste") {
+    lookupPaste();
+  } else if (action === "confirm-add") {
+    confirmAdd();
+  } else if (action === "cancel-add") {
+    state.addMode = "";
+    state.addDraft = null;
+    state.addError = "";
+    paintAddSlot(currentProfile());
+  } else if (action === "accept-return") {
+    acceptReturn();
+  } else if (action === "dismiss-return") {
+    state.returnAsk = null;
+    paintModal();
   } else if (action === "use-emoji") {
     useEmoji();
   } else if (action === "google") {
@@ -1069,6 +1430,18 @@ document.addEventListener("click", (event) => {
     document.getElementById("install-hint")?.remove();
   }
 });
+
+document.addEventListener("input", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (target.id === "add-notes") state.addNotes = target.value;
+  if (target.id === "paste-url") state.pasteValue = target.value;
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") offerClipboard();
+});
+window.addEventListener("focus", () => offerClipboard());
 
 document.addEventListener("change", (event) => {
   const target = event.target;
@@ -1119,6 +1492,7 @@ async function start() {
     return;
   }
 
+  consumeShare();
   render();
 
   onAuthStateChanged(auth, (user) => {
